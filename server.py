@@ -391,7 +391,64 @@ def health_check():
 
 @app.route('/api/backup-info', methods=['GET'])
 def backup_info():
-    """Get information about encrypted data for backup purposes"""
+    """Get information about encrypted data for backup purposes - Public endpoint for GitHub Actions"""
+    
+    # Check if DATA_DIR exists
+    if not os.path.exists(DATA_DIR):
+        return jsonify({
+            'has_data': False,
+            'files': [],
+            'total_size': 0,
+            'files_count': 0,
+            'backup_timestamp': datetime.now().isoformat(),
+            'message': 'DATA_DIR does not exist'
+        })
+    
+    # Get information about encrypted files
+    encrypted_files = []
+    total_size = 0
+    
+    try:
+        # List all encrypted files in DATA_DIR
+        for filename in os.listdir(DATA_DIR):
+            if filename.endswith('.enc'):
+                filepath = os.path.join(DATA_DIR, filename)
+                if os.path.isfile(filepath):
+                    file_size = os.path.getsize(filepath)
+                    file_mtime = os.path.getmtime(filepath)
+                    
+                    encrypted_files.append({
+                        'filename': filename,
+                        'size': file_size,
+                        'modified': datetime.fromtimestamp(file_mtime).isoformat()
+                    })
+                    total_size += file_size
+        
+        return jsonify({
+            'has_data': len(encrypted_files) > 0,
+            'files': encrypted_files,
+            'total_size': total_size,
+            'files_count': len(encrypted_files),
+            'backup_timestamp': datetime.now().isoformat(),
+            'data_dir': DATA_DIR,
+            'message': f'Found {len(encrypted_files)} encrypted files'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'has_data': False,
+            'files': [],
+            'total_size': 0,
+            'files_count': 0,
+            'backup_timestamp': datetime.now().isoformat(),
+            'error': str(e),
+            'message': f'Error reading DATA_DIR: {e}'
+        }), 500
+
+
+@app.route('/api/backup-info-auth', methods=['GET'])
+def backup_info_auth():
+    """Get information about encrypted data for backup purposes - Authenticated version"""
     token = request.headers.get('Authorization', '').replace('Bearer ', '')
     if not validate_session(token):
         return jsonify({'error': 'Unauthorized'}), 401
@@ -403,7 +460,10 @@ def backup_info():
         return jsonify({
             'has_data': False,
             'files': [],
-            'total_size': 0
+            'total_size': 0,
+            'files_count': 0,
+            'backup_timestamp': datetime.now().isoformat(),
+            'message': 'User file does not exist'
         })
     
     # Get information about encrypted files
@@ -427,7 +487,7 @@ def backup_info():
                 total_size += file_size
     
     return jsonify({
-        'has_data': True,
+        'has_data': len(encrypted_files) > 0,
         'files': encrypted_files,
         'total_size': total_size,
         'files_count': len(encrypted_files),
