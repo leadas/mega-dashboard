@@ -79,12 +79,31 @@ jobs:
                 echo "✅ Backup manifest created successfully"
 
                 # Download each encrypted file from server
-                echo "$FILES_LIST" | while read -r filename; do
+                echo "📋 Files to download: $FILES_LIST"
+                for filename in $FILES_LIST; do
                   if [ -n "$filename" ]; then
                     echo "⬇️  Downloading $filename"
-                    curl -s -f "$RAILWAY_URL/api/download-file/$filename" -o "$BACKUP_DIR/$filename" || echo "⚠️  Failed to download $filename"
+                    echo "Download URL: $RAILWAY_URL/api/download-file/$filename"
+                    echo "Target path: $BACKUP_DIR/$filename"
+                    
+                    # Download the file
+                    if curl -s -f "$RAILWAY_URL/api/download-file/$filename" -o "$BACKUP_DIR/$filename"; then
+                      echo "✅ Successfully downloaded $filename"
+                      # Verify file was downloaded
+                      if [ -f "$BACKUP_DIR/$filename" ]; then
+                        echo "✅ File exists: $BACKUP_DIR/$filename ($(wc -c < "$BACKUP_DIR/$filename") bytes)"
+                      else
+                        echo "❌ File not found after download: $BACKUP_DIR/$filename"
+                      fi
+                    else
+                      echo "⚠️  Failed to download $filename"
+                    fi
                   fi
                 done
+                
+                # Show final backup directory contents
+                echo "📁 Final backup directory contents:"
+                ls -la "$BACKUP_DIR"
               else
                 echo "📝 No encrypted files found on server"
                 
@@ -181,7 +200,11 @@ jobs:
 
           # Copy current backup directory into worktree
           echo "Copying backup directory: $BACKUP_DIR to worktree"
+          echo "Contents of source backup directory:"
+          ls -la "$BACKUP_DIR"
           rsync -a "$BACKUP_DIR" ../backups-worktree/
+          echo "Contents after copy:"
+          ls -la ../backups-worktree/
 
           # Commit inside backups worktree
           pushd ../backups-worktree
