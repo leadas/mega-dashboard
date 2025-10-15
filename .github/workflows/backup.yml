@@ -80,37 +80,46 @@ jobs:
                 
                 echo "✅ Backup manifest created successfully"
 
-                # Download each encrypted file from server
-                echo "📋 Files to download: $FILES_LIST"
-                echo "📋 Starting download loop..."
+                # Download encrypted files directly using known filename
+                echo "🔄 Attempting direct file download..."
                 
-                # Convert newline-separated list to array
-                IFS=$'\n' read -r -a FILES_ARRAY <<< "$FILES_LIST"
-                echo "📋 Files array length: ${#FILES_ARRAY[@]}"
+                # Extract filename from backup info JSON
+                FILENAME=$(cat backup_info.json | jq -r '.files[0].filename // empty')
+                echo "📋 Extracted filename: '$FILENAME'"
                 
-                for filename in "${FILES_ARRAY[@]}"; do
-                  echo "📋 Processing filename: '$filename'"
-                  if [ -n "$filename" ] && [ "$filename" != "null" ]; then
-                    echo "⬇️  Downloading $filename"
-                    echo "Download URL: $RAILWAY_URL/api/download-file/$filename"
-                    echo "Target path: $BACKUP_DIR/$filename"
-                    
-                    # Download the file
-                    if curl -s -f "$RAILWAY_URL/api/download-file/$filename" -o "$BACKUP_DIR/$filename"; then
-                      echo "✅ Successfully downloaded $filename"
-                      # Verify file was downloaded
-                      if [ -f "$BACKUP_DIR/$filename" ]; then
-                        echo "✅ File exists: $BACKUP_DIR/$filename ($(wc -c < "$BACKUP_DIR/$filename") bytes)"
-                      else
-                        echo "❌ File not found after download: $BACKUP_DIR/$filename"
-                      fi
-                    else
-                      echo "⚠️  Failed to download $filename"
-                    fi
+                if [ -n "$FILENAME" ] && [ "$FILENAME" != "null" ] && [ "$FILENAME" != "empty" ]; then
+                  echo "⬇️  Downloading file: $FILENAME"
+                  echo "Download URL: $RAILWAY_URL/api/download-file/$FILENAME"
+                  echo "Target path: $BACKUP_DIR/$FILENAME"
+                  
+                  # Create the target file path
+                  mkdir -p "$BACKUP_DIR"
+                  
+                  # Download with verbose output
+                  echo "🔍 Starting curl download..."
+                  curl -v -L "$RAILWAY_URL/api/download-file/$FILENAME" -o "$BACKUP_DIR/$FILENAME" 2>&1 | head -20
+                  
+                  # Check if file was created
+                  if [ -f "$BACKUP_DIR/$FILENAME" ]; then
+                    FILESIZE=$(wc -c < "$BACKUP_DIR/$FILENAME")
+                    echo "✅ File downloaded successfully: $BACKUP_DIR/$FILENAME ($FILESIZE bytes)"
                   else
-                    echo "⚠️  Skipping empty or null filename: '$filename'"
+                    echo "❌ File download failed - file not found: $BACKUP_DIR/$FILENAME"
+                    
+                    # Try alternative download method
+                    echo "🔄 Trying alternative download method..."
+                    wget -O "$BACKUP_DIR/$FILENAME" "$RAILWAY_URL/api/download-file/$FILENAME" 2>&1 | head -10
+                    
+                    if [ -f "$BACKUP_DIR/$FILENAME" ]; then
+                      FILESIZE=$(wc -c < "$BACKUP_DIR/$FILENAME")
+                      echo "✅ Alternative download successful: $BACKUP_DIR/$FILENAME ($FILESIZE bytes)"
+                    else
+                      echo "❌ Alternative download also failed"
+                    fi
                   fi
-                done
+                else
+                  echo "❌ No valid filename found in backup info"
+                fi
                 
                 # Show final backup directory contents
                 echo "📁 Final backup directory contents:"
