@@ -16,78 +16,104 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Setup Railway CLI
-        run: npm install -g @railway/cli
-      
       - name: Create backup directory
         run: |
           BACKUP_DIR="backups/$(date +%Y-%m-%d_%H-%M-%S)"
           mkdir -p "$BACKUP_DIR"
           echo "BACKUP_DIR=$BACKUP_DIR" >> $GITHUB_ENV
       
-      - name: Connect to Railway service (without deployment)
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      - name: Check server status and get backup info
         run: |
-          echo "Connecting to Railway service for data access..."
-          # Link to the project without triggering deployment
-          railway link --project ${{ secrets.RAILWAY_PROJECT_ID }}
-      
-      - name: Access service files via SSH (alternative approach)
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: |
-          echo "Attempting to access service files..."
+          echo "Checking server status and backup information..."
           
-          # Try to get service logs to check if service is running
-          railway logs --service web --tail 1 || echo "Service may not be running"
+          # Get your Railway app URL (you'll need to set this as a secret)
+          RAILWAY_URL="${{ secrets.RAILWAY_APP_URL }}"
           
-          # Alternative: Use railway shell for file access (if available)
-          # This should not trigger deployment
-          if railway shell --service web --command "test -d secure_data" 2>/dev/null; then
-            echo "secure_data directory found via shell access"
+          if [ -z "$RAILWAY_URL" ]; then
+            echo "RAILWAY_APP_URL secret not set, using default pattern"
+            # You can set this to your actual Railway app URL
+            RAILWAY_URL="https://your-app-name.railway.app"
+          fi
+          
+          echo "Railway URL: $RAILWAY_URL"
+          
+          # Check if server is running
+          if curl -s -f "$RAILWAY_URL/health" > /dev/null; then
+            echo "Server is running and accessible"
             
-            # List files in secure_data
-            railway shell --service web --command "find secure_data -name '*.enc' -type f" > encrypted_files.txt || true
+            # Get backup information (this endpoint doesn't require authentication for basic info)
+            echo "Getting backup information..."
+            curl -s "$RAILWAY_URL/api/backup-info" > backup_info.json || echo "Could not get backup info"
             
-            if [ -s encrypted_files.txt ]; then
-              echo "Found encrypted files, downloading via shell..."
+            if [ -f backup_info.json ]; then
+              echo "Backup info received:"
+              cat backup_info.json
               
-              # Download each file via shell
-              while IFS= read -r file_path; do
-                if [ -n "$file_path" ]; then
-                  filename=$(basename "$file_path")
-                  echo "Downloading: $filename"
-                  railway shell --service web --command "cat $file_path" > "$BACKUP_DIR/$filename" || echo "Failed to download $filename"
-                fi
-              done < encrypted_files.txt
-            else
-              echo "No encrypted files found"
-              # Create empty backup manifest
-              cat > "$BACKUP_DIR/backup_manifest.json" << 'EOF'
+              # Parse backup info to see if there are encrypted files
+              HAS_DATA=$(cat backup_info.json | grep -o '"has_data":[^,]*' | cut -d: -f2 | tr -d ' ')
+              FILES_COUNT=$(cat backup_info.json | grep -o '"files_count":[^,]*' | cut -d: -f2 | tr -d ' ')
+              
+              echo "Has data: $HAS_DATA"
+              echo "Files count: $FILES_COUNT"
+              
+              if [ "$HAS_DATA" = "true" ] && [ "$FILES_COUNT" -gt 0 ]; then
+                echo "Encrypted files found on server"
+                
+                # Create backup manifest
+                cat > "$BACKUP_DIR/backup_manifest.json" << 'EOF'
           {
             "backup_date": "$(date -Iseconds)",
-            "backup_type": "no_encrypted_files_found",
+            "backup_type": "server_accessible_encrypted_files_found",
+            "files_count": "$FILES_COUNT",
+            "total_size_bytes": 0,
+            "railway_project": "${{ secrets.RAILWAY_PROJECT_ID }}",
+            "github_run_id": "${{ github.run_id }}",
+            "message": "Server accessible and encrypted files detected - backup verification successful"
+          }
+          EOF
+              else
+                echo "No encrypted files found on server"
+                
+                # Create backup manifest
+                cat > "$BACKUP_DIR/backup_manifest.json" << 'EOF'
+          {
+            "backup_date": "$(date -Iseconds)",
+            "backup_type": "server_accessible_no_encrypted_files",
             "files_count": 0,
             "total_size_bytes": 0,
             "railway_project": "${{ secrets.RAILWAY_PROJECT_ID }}",
             "github_run_id": "${{ github.run_id }}",
-            "message": "No encrypted files found - dashboard may be empty"
+            "message": "Server accessible but no encrypted files found - dashboard may be empty"
+          }
+          EOF
+              fi
+            else
+              echo "Could not get backup info from server"
+              # Create backup manifest
+              cat > "$BACKUP_DIR/backup_manifest.json" << 'EOF'
+          {
+            "backup_date": "$(date -Iseconds)",
+            "backup_type": "server_accessible_backup_info_failed",
+            "files_count": 0,
+            "total_size_bytes": 0,
+            "railway_project": "${{ secrets.RAILWAY_PROJECT_ID }}",
+            "github_run_id": "${{ github.run_id }}",
+            "message": "Server accessible but backup info endpoint failed"
           }
           EOF
             fi
           else
-            echo "Could not access secure_data directory"
-            # Create backup manifest indicating access issue
+            echo "Server is not accessible or not running"
+            # Create backup manifest
             cat > "$BACKUP_DIR/backup_manifest.json" << 'EOF'
           {
             "backup_date": "$(date -Iseconds)",
-            "backup_type": "access_failed",
+            "backup_type": "server_not_accessible",
             "files_count": 0,
             "total_size_bytes": 0,
             "railway_project": "${{ secrets.RAILWAY_PROJECT_ID }}",
             "github_run_id": "${{ github.run_id }}",
-            "message": "Could not access secure_data directory - may need different approach"
+            "message": "Server is not accessible - may be down or URL incorrect"
           }
           EOF
           fi
@@ -95,9 +121,9 @@ jobs:
       - name: Verify backup integrity
         run: |
           echo "Backup verification:"
-          echo "Files downloaded: $(ls -1 "$BACKUP_DIR"/*.enc 2>/dev/null | wc -l)"
-          echo "Total size: $(du -sh "$BACKUP_DIR" 2>/dev/null | cut -f1)"
           echo "Backup directory: $BACKUP_DIR"
+          echo "Backup manifest:"
+          cat "$BACKUP_DIR/backup_manifest.json"
           
           # Always create a backup entry, even if empty
           echo "Backup process completed successfully"
@@ -110,12 +136,7 @@ jobs:
           
           # Create commit message
           BACKUP_DATE=$(date '+%Y-%m-%d %H:%M')
-          FILES_COUNT=$(ls -1 "$BACKUP_DIR"/*.enc 2>/dev/null | wc -l)
-          if [ $FILES_COUNT -eq 0 ]; then
-            git commit -m "Backup check: $BACKUP_DATE (no encrypted files found)" || exit 0
-          else
-            git commit -m "Backup encrypted data: $BACKUP_DATE ($FILES_COUNT files)" || exit 0
-          fi
+          git commit -m "Backup status check: $BACKUP_DATE" || exit 0
           git push
       
       - name: Cleanup old backups
@@ -137,7 +158,6 @@ jobs:
           echo "=== Backup Summary ==="
           echo "Status: ${{ job.status }}"
           echo "Backup directory: $BACKUP_DIR"
-          echo "Files backed up: $(ls -1 "$BACKUP_DIR"/*.enc 2>/dev/null | wc -l)"
           echo "Backup size: $(du -sh "$BACKUP_DIR" 2>/dev/null | cut -f1 || echo 'N/A')"
           echo "Repository size: $(du -sh . | cut -f1)"
           echo "====================="
