@@ -15,6 +15,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
       
       - name: Create backup directory
         run: |
@@ -56,7 +57,7 @@ jobs:
               echo "📄 Files count: $FILES_COUNT"
               
               if [ "$HAS_DATA" = "true" ] && [ "$FILES_COUNT" -gt 0 ]; then
-                echo "🎯 Encrypted files found on server - creating backup manifest"
+                echo "🎯 Encrypted files found on server - creating backup manifest and downloading files"
                 
                 # Create backup manifest with file information
                 cat > "$BACKUP_DIR/backup_manifest.json" << EOF
@@ -76,6 +77,14 @@ jobs:
           EOF
                 
                 echo "✅ Backup manifest created successfully"
+
+                # Download each encrypted file from server
+                echo "$FILES_LIST" | while read -r filename; do
+                  if [ -n "$filename" ]; then
+                    echo "⬇️  Downloading $filename"
+                    curl -s -f "$RAILWAY_URL/api/download-file/$filename" -o "$BACKUP_DIR/$filename" || echo "⚠️  Failed to download $filename"
+                  fi
+                done
               else
                 echo "📝 No encrypted files found on server"
                 
@@ -140,32 +149,47 @@ jobs:
           # Always create a backup entry, even if empty
           echo "✅ Backup process completed successfully"
       
-      - name: Commit and push backup
+      - name: Commit and push backup to 'backups' branch only
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add backups/
-          
-          # Create commit message that won't trigger Railway deployment
+
+          # Prepare a separate worktree for backups branch
+          mkdir -p ../backups-worktree
+          # Fetch backups branch if exists
+          git fetch origin backups:backups || true
+          # Create or reset worktree for backups branch
+          if git show-ref --verify --quiet refs/heads/backups; then
+            git worktree add -B backups ../backups-worktree backups
+          else
+            git worktree add -B backups ../backups-worktree backups
+          fi
+
+          # Copy current backup directory into worktree
+          rsync -a --delete "$BACKUP_DIR" ../backups-worktree/
+
+          # Commit inside backups worktree
+          pushd ../backups-worktree
+          git add .
           BACKUP_DATE=$(date '+%Y-%m-%d %H:%M')
           BACKUP_TYPE=$(cat "$BACKUP_DIR/backup_manifest.json" | jq -r '.backup_type')
           FILES_COUNT=$(cat "$BACKUP_DIR/backup_manifest.json" | jq -r '.files_count')
-          
-          git commit -m "🔒 [BACKUP-$BACKUP_TYPE] $BACKUP_DATE (files: $FILES_COUNT) - no deploy" || exit 0
-          git push
+          git commit -m "🔒 [BACKUP-$BACKUP_TYPE] $BACKUP_DATE (files: $FILES_COUNT)" || true
+          git push origin backups
+          popd
       
-      - name: Cleanup old backups
+      - name: Cleanup old backups in 'backups' branch
         run: |
-          # Keep only last 30 days of backups (delete directories older than 30 days)
+          # Prune old backups within backups branch worktree
+          pushd ../backups-worktree || exit 0
           echo "🧹 Cleaning up old backups..."
-          find backups/ -type d -name "20*" -mtime +30 -exec rm -rf {} + 2>/dev/null || true
-          
-          # Commit cleanup if any files were removed
-          git add backups/
+          find . -maxdepth 1 -type d -name "20*" -mtime +30 -exec rm -rf {} + 2>/dev/null || true
+          git add .
           if ! git diff --staged --quiet; then
-            git commit -m "🧹 Cleanup old backups (keep last 30 days)" || exit 0
-            git push
+            git commit -m "🧹 Cleanup old backups (keep last 30 days)" || true
+            git push origin backups
           fi
+          popd || true
       
       - name: Backup summary
         if: always()

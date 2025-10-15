@@ -4,7 +4,7 @@ Secure Dashboard Server with Server-Side Encryption
 This server provides proper encryption for sensitive data.
 """
 
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, send_file, abort
 from flask_cors import CORS
 import os
 import json
@@ -493,6 +493,35 @@ def backup_info_auth():
         'files_count': len(encrypted_files),
         'backup_timestamp': datetime.now().isoformat()
     })
+
+
+@app.route('/api/download-file/<path:filename>', methods=['GET'])
+def download_encrypted_file(filename: str):
+    """Download an encrypted .enc file from DATA_DIR.
+    Public read-only; only allows .enc files and blocks directory traversal.
+    """
+    try:
+        # Basic security checks
+        if not filename.endswith('.enc'):
+            return jsonify({'error': 'Only .enc files can be downloaded'}), 400
+        # Prevent path traversal
+        normalized = os.path.normpath(filename)
+        if normalized.startswith('..') or os.path.isabs(normalized):
+            return jsonify({'error': 'Invalid file path'}), 400
+        
+        # Construct full path inside DATA_DIR
+        full_path = os.path.join(DATA_DIR, normalized)
+        # Ensure file is within DATA_DIR
+        if not os.path.realpath(full_path).startswith(os.path.realpath(DATA_DIR)):
+            return jsonify({'error': 'Invalid file location'}), 400
+        
+        if not os.path.exists(full_path) or not os.path.isfile(full_path):
+            return jsonify({'error': 'File not found'}), 404
+        
+        # Stream file to client
+        return send_file(full_path, as_attachment=True, download_name=os.path.basename(full_path))
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/proxy-stats', methods=['POST'])
