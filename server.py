@@ -4,7 +4,7 @@ Secure Dashboard Server with Server-Side Encryption
 This server provides proper encryption for sensitive data.
 """
 
-from flask import Flask, request, jsonify, send_from_directory, send_file, abort
+from flask import Flask, request, jsonify, send_from_directory, send_file, abort, make_response
 from flask_cors import CORS
 import os
 import json
@@ -495,33 +495,57 @@ def backup_info_auth():
     })
 
 
-@app.route('/api/download-file/<path:filename>', methods=['GET'])
+@app.route('/api/download-file/<path:filename>', methods=['GET', 'OPTIONS'])
 def download_encrypted_file(filename: str):
     """Download an encrypted .enc file from DATA_DIR.
     Public read-only; only allows .enc files and blocks directory traversal.
     """
+    # Handle CORS preflight request
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        return response
+    
     try:
         # Basic security checks
         if not filename.endswith('.enc'):
-            return jsonify({'error': 'Only .enc files can be downloaded'}), 400
+            response = jsonify({'error': 'Only .enc files can be downloaded'})
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            return response, 400
+        
         # Prevent path traversal
         normalized = os.path.normpath(filename)
         if normalized.startswith('..') or os.path.isabs(normalized):
-            return jsonify({'error': 'Invalid file path'}), 400
+            response = jsonify({'error': 'Invalid file path'})
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            return response, 400
         
         # Construct full path inside DATA_DIR
         full_path = os.path.join(DATA_DIR, normalized)
         # Ensure file is within DATA_DIR
         if not os.path.realpath(full_path).startswith(os.path.realpath(DATA_DIR)):
-            return jsonify({'error': 'Invalid file location'}), 400
+            response = jsonify({'error': 'Invalid file location'})
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            return response, 400
         
         if not os.path.exists(full_path) or not os.path.isfile(full_path):
-            return jsonify({'error': 'File not found'}), 404
+            response = jsonify({'error': 'File not found'})
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            return response, 404
         
-        # Stream file to client
-        return send_file(full_path, as_attachment=True, download_name=os.path.basename(full_path))
+        # Stream file to client with CORS headers
+        file_response = send_file(full_path, as_attachment=True, download_name=os.path.basename(full_path))
+        file_response.headers['Access-Control-Allow-Origin'] = '*'
+        file_response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        file_response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        return file_response
+        
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        response = jsonify({'error': str(e)})
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        return response, 500
 
 
 @app.route('/api/proxy-stats', methods=['POST'])
