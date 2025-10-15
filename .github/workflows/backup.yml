@@ -233,20 +233,43 @@ jobs:
           echo "Looking for backup manifest:"
           find . -name "backup_manifest.json" -type f
           
-          git add .
+          # Find the current backup directory (most recent timestamp)
+          CURRENT_BACKUP_DIR=$(find . -maxdepth 1 -type d -name "2025-*" | sort | tail -1)
+          echo "Current backup directory: $CURRENT_BACKUP_DIR"
           
-          # Find the backup manifest file
-          MANIFEST_FILE=$(find . -name "backup_manifest.json" -type f | head -1)
-          if [ -n "$MANIFEST_FILE" ] && [ -f "$MANIFEST_FILE" ]; then
-            echo "Found manifest file: $MANIFEST_FILE"
-            BACKUP_DATE=$(date '+%Y-%m-%d %H:%M')
-            BACKUP_TYPE=$(cat "$MANIFEST_FILE" | jq -r '.backup_type // "unknown"')
-            FILES_COUNT=$(cat "$MANIFEST_FILE" | jq -r '.files_count // 0')
-            echo "Backup info - Type: $BACKUP_TYPE, Files: $FILES_COUNT"
-            git commit -m "🔒 [BACKUP-$BACKUP_TYPE] $BACKUP_DATE (files: $FILES_COUNT)" || true
+          if [ -n "$CURRENT_BACKUP_DIR" ]; then
+            # Find the manifest file in the current backup directory
+            MANIFEST_FILE="$CURRENT_BACKUP_DIR/backup_manifest.json"
+            echo "Looking for manifest file: $MANIFEST_FILE"
+            
+            if [ -f "$MANIFEST_FILE" ]; then
+              echo "✅ Found current manifest file: $MANIFEST_FILE"
+              BACKUP_DATE=$(date '+%Y-%m-%d %H:%M')
+              BACKUP_TYPE=$(cat "$MANIFEST_FILE" | jq -r '.backup_type // "unknown"')
+              FILES_COUNT=$(cat "$MANIFEST_FILE" | jq -r '.files_count // 0')
+              echo "Backup info - Type: $BACKUP_TYPE, Files: $FILES_COUNT"
+              
+              # List files in current backup directory
+              echo "Files in current backup directory:"
+              ls -la "$CURRENT_BACKUP_DIR"
+              
+              # Add all files including the encrypted file
+              git add .
+              
+              # Show what's being committed
+              echo "Files being committed:"
+              git status --porcelain
+              
+              git commit -m "🔒 [BACKUP-$BACKUP_TYPE] $BACKUP_DATE (files: $FILES_COUNT)" || true
+            else
+              echo "❌ No manifest file found in current backup directory"
+              git add .
+              git commit -m "🔒 [BACKUP-unknown] $(date '+%Y-%m-%d %H:%M') (no manifest)" || true
+            fi
           else
-            echo "No manifest file found, creating generic commit"
-            git commit -m "🔒 [BACKUP-unknown] $(date '+%Y-%m-%d %H:%M') (no manifest)" || true
+            echo "❌ No backup directory found"
+            git add .
+            git commit -m "🔒 [BACKUP-unknown] $(date '+%Y-%m-%d %H:%M') (no backup dir)" || true
           fi
           
           git push origin backups
