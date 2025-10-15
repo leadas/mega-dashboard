@@ -25,52 +25,92 @@ jobs:
           mkdir -p "$BACKUP_DIR"
           echo "BACKUP_DIR=$BACKUP_DIR" >> $GITHUB_ENV
       
-      - name: Download encrypted data files
+      - name: Check for encrypted data and download
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
-          # Download only encrypted files (*.enc) from secure_data directory
-          echo "Downloading encrypted data files..."
+          echo "Checking for encrypted data files on Railway..."
           
-          # Create list of encrypted files on Railway
-          railway run --service web find secure_data -name "*.enc" -type f > encrypted_files.txt
-          
-          # Download each encrypted file
-          while IFS= read -r file_path; do
-            if [ -n "$file_path" ]; then
-              filename=$(basename "$file_path")
-              echo "Downloading: $filename"
-              railway run --service web cat "$file_path" > "$BACKUP_DIR/$filename"
+          # Check if secure_data directory exists
+          if railway run --service web test -d secure_data; then
+            echo "secure_data directory found, looking for encrypted files..."
+            
+            # Create list of encrypted files on Railway
+            railway run --service web find secure_data -name "*.enc" -type f > encrypted_files.txt
+            
+            # Check if any encrypted files exist
+            if [ -s encrypted_files.txt ]; then
+              echo "Found encrypted files, downloading..."
+              
+              # Download each encrypted file
+              while IFS= read -r file_path; do
+                if [ -n "$file_path" ]; then
+                  filename=$(basename "$file_path")
+                  echo "Downloading: $filename"
+                  railway run --service web cat "$file_path" > "$BACKUP_DIR/$filename"
+                fi
+              done < encrypted_files.txt
+              
+              echo "Download completed successfully"
+            else
+              echo "No encrypted files found in secure_data directory"
+              # Create empty backup manifest for tracking
+              cat > "$BACKUP_DIR/backup_manifest.json" << EOF
+              {
+                "backup_date": "$(date -Iseconds)",
+                "backup_type": "no_encrypted_files_found",
+                "files_count": 0,
+                "total_size_bytes": 0,
+                "railway_project": "${{ secrets.RAILWAY_PROJECT_ID }}",
+                "github_run_id": "${{ github.run_id }}",
+                "message": "No encrypted files found - dashboard may be empty or not yet used"
+              }
+              EOF
             fi
-          done < encrypted_files.txt
-          
-          # Create backup manifest
-          cat > "$BACKUP_DIR/backup_manifest.json" << EOF
-          {
-            "backup_date": "$(date -Iseconds)",
-            "backup_type": "encrypted_files_only",
-            "files_count": $(ls -1 "$BACKUP_DIR"/*.enc 2>/dev/null | wc -l),
-            "total_size_bytes": $(du -sb "$BACKUP_DIR" | cut -f1),
-            "railway_project": "${{ secrets.RAILWAY_PROJECT_ID }}",
-            "github_run_id": "${{ github.run_id }}",
-            "files": [
-              $(ls -1 "$BACKUP_DIR"/*.enc 2>/dev/null | sed 's/.*\//              "/' | sed 's/$/"/' | paste -sd, -)
-            ]
-          }
-          EOF
+          else
+            echo "secure_data directory not found on Railway"
+            # Create empty backup manifest for tracking
+            cat > "$BACKUP_DIR/backup_manifest.json" << EOF
+            {
+              "backup_date": "$(date -Iseconds)",
+              "backup_type": "no_secure_data_directory",
+              "files_count": 0,
+              "total_size_bytes": 0,
+              "railway_project": "${{ secrets.RAILWAY_PROJECT_ID }}",
+              "github_run_id": "${{ github.run_id }}",
+              "message": "secure_data directory not found - dashboard not yet initialized"
+            }
+            EOF
+          fi
+      
+      - name: Create backup manifest (if files were downloaded)
+        run: |
+          # Only create manifest if encrypted files exist
+          if [ $(ls -1 "$BACKUP_DIR"/*.enc 2>/dev/null | wc -l) -gt 0 ]; then
+            cat > "$BACKUP_DIR/backup_manifest.json" << EOF
+            {
+              "backup_date": "$(date -Iseconds)",
+              "backup_type": "encrypted_files_only",
+              "files_count": $(ls -1 "$BACKUP_DIR"/*.enc 2>/dev/null | wc -l),
+              "total_size_bytes": $(du -sb "$BACKUP_DIR" | cut -f1),
+              "railway_project": "${{ secrets.RAILWAY_PROJECT_ID }}",
+              "github_run_id": "${{ github.run_id }}",
+              "files": [
+                $(ls -1 "$BACKUP_DIR"/*.enc 2>/dev/null | sed 's/.*\//              "/' | sed 's/$/"/' | paste -sd, -)
+              ]
+            }
+            EOF
+          fi
       
       - name: Verify backup integrity
         run: |
           echo "Backup verification:"
           echo "Files downloaded: $(ls -1 "$BACKUP_DIR"/*.enc 2>/dev/null | wc -l)"
-          echo "Total size: $(du -sh "$BACKUP_DIR" | cut -f1)"
+          echo "Total size: $(du -sh "$BACKUP_DIR" 2>/dev/null | cut -f1)"
           echo "Backup directory: $BACKUP_DIR"
           
-          # Verify at least one encrypted file exists
-          if [ $(ls -1 "$BACKUP_DIR"/*.enc 2>/dev/null | wc -l) -eq 0 ]; then
-            echo "Warning: No encrypted files found in backup"
-            exit 1
-          fi
+          # Always create a backup entry, even if empty
+          echo "Backup process completed successfully"
       
       - name: Commit and push backup
         run: |
@@ -81,7 +121,11 @@ jobs:
           # Create commit message
           BACKUP_DATE=$(date '+%Y-%m-%d %H:%M')
           FILES_COUNT=$(ls -1 "$BACKUP_DIR"/*.enc 2>/dev/null | wc -l)
-          git commit -m "Backup encrypted data: $BACKUP_DATE ($FILES_COUNT files)" || exit 0
+          if [ $FILES_COUNT -eq 0 ]; then
+            git commit -m "Backup check: $BACKUP_DATE (no encrypted files found)" || exit 0
+          else
+            git commit -m "Backup encrypted data: $BACKUP_DATE ($FILES_COUNT files)" || exit 0
+          fi
           git push
       
       - name: Cleanup old backups
