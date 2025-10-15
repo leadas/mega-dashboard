@@ -55,6 +55,8 @@ jobs:
               
               echo "📁 Has data: $HAS_DATA"
               echo "📄 Files count: $FILES_COUNT"
+              echo "📋 Raw FILES_LIST: '$FILES_LIST'"
+              echo "📋 FILES_LIST length: ${#FILES_LIST}"
               
               if [ "$HAS_DATA" = "true" ] && [ "$FILES_COUNT" -gt 0 ]; then
                 echo "🎯 Encrypted files found on server - creating backup manifest and downloading files"
@@ -80,8 +82,15 @@ jobs:
 
                 # Download each encrypted file from server
                 echo "📋 Files to download: $FILES_LIST"
-                for filename in $FILES_LIST; do
-                  if [ -n "$filename" ]; then
+                echo "📋 Starting download loop..."
+                
+                # Convert newline-separated list to array
+                IFS=$'\n' read -r -a FILES_ARRAY <<< "$FILES_LIST"
+                echo "📋 Files array length: ${#FILES_ARRAY[@]}"
+                
+                for filename in "${FILES_ARRAY[@]}"; do
+                  echo "📋 Processing filename: '$filename'"
+                  if [ -n "$filename" ] && [ "$filename" != "null" ]; then
                     echo "⬇️  Downloading $filename"
                     echo "Download URL: $RAILWAY_URL/api/download-file/$filename"
                     echo "Target path: $BACKUP_DIR/$filename"
@@ -98,6 +107,8 @@ jobs:
                     else
                       echo "⚠️  Failed to download $filename"
                     fi
+                  else
+                    echo "⚠️  Skipping empty or null filename: '$filename'"
                   fi
                 done
                 
