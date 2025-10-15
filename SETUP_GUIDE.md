@@ -11,7 +11,7 @@ Your secure dashboard is now ready with:
 
 ---
 
-## 📋 Quick Start
+## 📋 Quick Start 2
 
 ### 1. Change Default Credentials
 
