@@ -49,8 +49,3 @@ Thumbs.db
 
 # Backup files
 *.backup
-
-# Keep backups directory but ignore temporary files
-backups/temp/
-backups/*.tmp
-backups/
