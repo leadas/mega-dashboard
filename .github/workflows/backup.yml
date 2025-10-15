@@ -154,6 +154,15 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
 
+          # Debug: Show current state
+          echo "🔍 Debug information:"
+          echo "BACKUP_DIR: $BACKUP_DIR"
+          echo "Current directory: $(pwd)"
+          echo "Contents of current directory:"
+          ls -la
+          echo "Contents of BACKUP_DIR:"
+          ls -la "$BACKUP_DIR" || echo "BACKUP_DIR not found"
+
           # Prepare a separate worktree for backups branch
           mkdir -p ../backups-worktree
           rm -rf ../backups-worktree
@@ -171,30 +180,53 @@ jobs:
           fi
 
           # Copy current backup directory into worktree
-          rsync -a --delete "$BACKUP_DIR" ../backups-worktree/
+          echo "Copying backup directory: $BACKUP_DIR to worktree"
+          rsync -a "$BACKUP_DIR" ../backups-worktree/
 
           # Commit inside backups worktree
           pushd ../backups-worktree
+          echo "Inside worktree, contents:"
+          ls -la
+          echo "Looking for backup manifest:"
+          find . -name "backup_manifest.json" -type f
+          
           git add .
-          BACKUP_DATE=$(date '+%Y-%m-%d %H:%M')
-          BACKUP_TYPE=$(cat "$BACKUP_DIR/backup_manifest.json" | jq -r '.backup_type')
-          FILES_COUNT=$(cat "$BACKUP_DIR/backup_manifest.json" | jq -r '.files_count')
-          git commit -m "🔒 [BACKUP-$BACKUP_TYPE] $BACKUP_DATE (files: $FILES_COUNT)" || true
+          
+          # Find the backup manifest file
+          MANIFEST_FILE=$(find . -name "backup_manifest.json" -type f | head -1)
+          if [ -n "$MANIFEST_FILE" ] && [ -f "$MANIFEST_FILE" ]; then
+            echo "Found manifest file: $MANIFEST_FILE"
+            BACKUP_DATE=$(date '+%Y-%m-%d %H:%M')
+            BACKUP_TYPE=$(cat "$MANIFEST_FILE" | jq -r '.backup_type // "unknown"')
+            FILES_COUNT=$(cat "$MANIFEST_FILE" | jq -r '.files_count // 0')
+            echo "Backup info - Type: $BACKUP_TYPE, Files: $FILES_COUNT"
+            git commit -m "🔒 [BACKUP-$BACKUP_TYPE] $BACKUP_DATE (files: $FILES_COUNT)" || true
+          else
+            echo "No manifest file found, creating generic commit"
+            git commit -m "🔒 [BACKUP-unknown] $(date '+%Y-%m-%d %H:%M') (no manifest)" || true
+          fi
+          
           git push origin backups
           popd
       
       - name: Cleanup old backups in 'backups' branch
         run: |
           # Prune old backups within backups branch worktree
-          pushd ../backups-worktree || exit 0
-          echo "🧹 Cleaning up old backups..."
-          find . -maxdepth 1 -type d -name "20*" -mtime +30 -exec rm -rf {} + 2>/dev/null || true
-          git add .
-          if ! git diff --staged --quiet; then
-            git commit -m "🧹 Cleanup old backups (keep last 30 days)" || true
-            git push origin backups
+          if [ -d "../backups-worktree" ]; then
+            pushd ../backups-worktree || exit 0
+            echo "🧹 Cleaning up old backups..."
+            echo "Current worktree contents:"
+            ls -la
+            find . -maxdepth 1 -type d -name "20*" -mtime +30 -exec rm -rf {} + 2>/dev/null || true
+            git add .
+            if ! git diff --staged --quiet; then
+              git commit -m "🧹 Cleanup old backups (keep last 30 days)" || true
+              git push origin backups
+            fi
+            popd || true
+          else
+            echo "No worktree found for cleanup"
           fi
-          popd || true
       
       - name: Backup summary
         if: always()
