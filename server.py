@@ -380,6 +380,50 @@ def health_check():
     }), 200
 
 
+@app.route('/api/backup-info', methods=['GET'])
+def backup_info():
+    """Get information about encrypted data for backup purposes"""
+    token = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not validate_session(token):
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    username = get_session_username(token)
+    user_file = get_user_file(username)
+    
+    if not os.path.exists(user_file):
+        return jsonify({
+            'has_data': False,
+            'files': [],
+            'total_size': 0
+        })
+    
+    # Get information about encrypted files
+    encrypted_files = []
+    total_size = 0
+    
+    for filename in os.listdir(DATA_DIR):
+        if filename.endswith('.enc'):
+            filepath = os.path.join(DATA_DIR, filename)
+            file_size = os.path.getsize(filepath)
+            file_mtime = os.path.getmtime(filepath)
+            
+            encrypted_files.append({
+                'filename': filename,
+                'size': file_size,
+                'modified': datetime.fromtimestamp(file_mtime).isoformat(),
+                'is_user_file': filename == os.path.basename(user_file)
+            })
+            total_size += file_size
+    
+    return jsonify({
+        'has_data': True,
+        'files': encrypted_files,
+        'total_size': total_size,
+        'files_count': len(encrypted_files),
+        'backup_timestamp': datetime.now().isoformat()
+    })
+
+
 @app.route('/api/proxy-stats', methods=['POST'])
 def proxy_stats():
     """Proxy endpoint to fetch stats from external websites (bypass CORS)"""
