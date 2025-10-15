@@ -1,0 +1,9 @@
+{
+  "backup_date": "$(date -Iseconds)",
+  "backup_type": "no_secure_data_directory",
+  "files_count": 0,
+  "total_size_bytes": 0,
+  "railway_project": "607458ef-8d45-414a-be1d-116bcdffeea5",
+  "github_run_id": "18530665604",
+  "message": "secure_data directory not found - dashboard not yet initialized"
+}
