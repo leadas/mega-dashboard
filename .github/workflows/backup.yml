@@ -157,12 +157,12 @@ jobs:
           # Prepare a separate worktree for backups branch
           mkdir -p ../backups-worktree
           # Fetch backups branch if exists
-          git fetch origin backups:backups || true
+          git fetch origin backups:refs/remotes/origin/backups || true
           # Create or reset worktree for backups branch
-          if git show-ref --verify --quiet refs/heads/backups; then
-            git worktree add -B backups ../backups-worktree backups
+          if git show-ref --verify --quiet refs/remotes/origin/backups; then
+            git worktree add -B backups ../backups-worktree origin/backups
           else
-            git worktree add -B backups ../backups-worktree backups
+            git worktree add -B backups ../backups-worktree -b backups
           fi
 
           # Copy current backup directory into worktree
