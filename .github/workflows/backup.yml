@@ -173,7 +173,7 @@ jobs:
           # Create worktree for backups branch
           if git show-ref --verify --quiet refs/remotes/origin/backups; then
             echo "Creating worktree from existing remote backups branch"
-            git worktree add ../backups-worktree origin/backups
+            git worktree add ../backups-worktree -B backups origin/backups
           else
             echo "Creating new backups branch"
             git worktree add ../backups-worktree -b backups
