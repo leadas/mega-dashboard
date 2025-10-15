@@ -1,6 +1,6 @@
 # 🔐 Environment Variables Setup Complete!
 
-## ✅ What Was Done
+## What Was Done
 
 Your credentials are now stored in **environment variables** instead of hardcoded in `server.py`!
 
