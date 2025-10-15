@@ -25,7 +25,7 @@ app = Flask(__name__, static_folder='.')
 CORS(app)
 
 # Configuration
-DATA_DIR = 'secure_data'
+DATA_DIR = os.getenv('RAILWAY_VOLUME_MOUNT_PATH', 'secure_data')
 SESSIONS_FILE = os.path.join(DATA_DIR, 'sessions.json')
 USERS_FILE = os.path.join(DATA_DIR, 'users.json')
 LOCKOUTS_FILE = os.path.join(DATA_DIR, 'lockouts.json')
@@ -36,8 +36,17 @@ SESSION_DURATION = 72 * 60 * 60  # 72 hours in seconds
 MAX_LOGIN_ATTEMPTS = 5
 LOCKOUT_DURATION = 15 * 60  # 15 minutes in seconds
 
+# Debug volume path configuration
+print(f"=== Volume Configuration Debug ===")
+print(f"DATA_DIR: {DATA_DIR}")
+print(f"DATA_DIR exists: {os.path.exists(DATA_DIR)}")
+print(f"Current working directory: {os.getcwd()}")
+print(f"RAILWAY_VOLUME_MOUNT_PATH: {os.getenv('RAILWAY_VOLUME_MOUNT_PATH')}")
+print(f"=================================")
+
 # Ensure data directory exists
 os.makedirs(DATA_DIR, exist_ok=True)
+print(f"Created/verified DATA_DIR: {DATA_DIR}")
 
 # Load credentials from environment variables (or use defaults for first-time setup)
 DEFAULT_PASSWORD = os.getenv('DASHBOARD_PASSWORD', 'admin123')
@@ -401,19 +410,21 @@ def backup_info():
     encrypted_files = []
     total_size = 0
     
-    for filename in os.listdir(DATA_DIR):
-        if filename.endswith('.enc'):
-            filepath = os.path.join(DATA_DIR, filename)
-            file_size = os.path.getsize(filepath)
-            file_mtime = os.path.getmtime(filepath)
-            
-            encrypted_files.append({
-                'filename': filename,
-                'size': file_size,
-                'modified': datetime.fromtimestamp(file_mtime).isoformat(),
-                'is_user_file': filename == os.path.basename(user_file)
-            })
-            total_size += file_size
+    # Check if DATA_DIR exists and list encrypted files
+    if os.path.exists(DATA_DIR):
+        for filename in os.listdir(DATA_DIR):
+            if filename.endswith('.enc'):
+                filepath = os.path.join(DATA_DIR, filename)
+                file_size = os.path.getsize(filepath)
+                file_mtime = os.path.getmtime(filepath)
+                
+                encrypted_files.append({
+                    'filename': filename,
+                    'size': file_size,
+                    'modified': datetime.fromtimestamp(file_mtime).isoformat(),
+                    'is_user_file': filename == os.path.basename(user_file)
+                })
+                total_size += file_size
     
     return jsonify({
         'has_data': True,
