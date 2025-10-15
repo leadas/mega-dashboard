@@ -6,7 +6,7 @@ Your credentials are now stored in **environment variables** instead of hardcode
 
 ---
 
-## 📁 Files Created/Updated
+##  Files Created/Updated
 
 ### **`.env`** - Your Actual Credentials
 ```bash
