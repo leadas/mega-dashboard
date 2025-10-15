@@ -19,11 +19,6 @@ jobs:
       - name: Setup Railway CLI
         run: npm install -g @railway/cli
       
-      - name: Verify Railway Authentication
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: railway whoami
-      
       - name: Create backup directory
         run: |
           BACKUP_DIR="backups/$(date +%Y-%m-%d_%H-%M-%S)"
