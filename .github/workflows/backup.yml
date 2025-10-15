@@ -55,51 +55,51 @@ jobs:
             else
               echo "No encrypted files found in secure_data directory"
               # Create empty backup manifest for tracking
-              cat > "$BACKUP_DIR/backup_manifest.json" << EOF
-              {
-                "backup_date": "$(date -Iseconds)",
-                "backup_type": "no_encrypted_files_found",
-                "files_count": 0,
-                "total_size_bytes": 0,
-                "railway_project": "${{ secrets.RAILWAY_PROJECT_ID }}",
-                "github_run_id": "${{ github.run_id }}",
-                "message": "No encrypted files found - dashboard may be empty or not yet used"
-              }
-              EOF
+              cat > "$BACKUP_DIR/backup_manifest.json" << 'EOF'
+          {
+            "backup_date": "$(date -Iseconds)",
+            "backup_type": "no_encrypted_files_found",
+            "files_count": 0,
+            "total_size_bytes": 0,
+            "railway_project": "${{ secrets.RAILWAY_PROJECT_ID }}",
+            "github_run_id": "${{ github.run_id }}",
+            "message": "No encrypted files found - dashboard may be empty or not yet used"
+          }
+          EOF
             fi
           else
             echo "secure_data directory not found on Railway"
             # Create empty backup manifest for tracking
-            cat > "$BACKUP_DIR/backup_manifest.json" << EOF
-            {
-              "backup_date": "$(date -Iseconds)",
-              "backup_type": "no_secure_data_directory",
-              "files_count": 0,
-              "total_size_bytes": 0,
-              "railway_project": "${{ secrets.RAILWAY_PROJECT_ID }}",
-              "github_run_id": "${{ github.run_id }}",
-              "message": "secure_data directory not found - dashboard not yet initialized"
-            }
-            EOF
+            cat > "$BACKUP_DIR/backup_manifest.json" << 'EOF'
+          {
+            "backup_date": "$(date -Iseconds)",
+            "backup_type": "no_secure_data_directory",
+            "files_count": 0,
+            "total_size_bytes": 0,
+            "railway_project": "${{ secrets.RAILWAY_PROJECT_ID }}",
+            "github_run_id": "${{ github.run_id }}",
+            "message": "secure_data directory not found - dashboard not yet initialized"
+          }
+          EOF
           fi
       
       - name: Create backup manifest (if files were downloaded)
         run: |
           # Only create manifest if encrypted files exist
           if [ $(ls -1 "$BACKUP_DIR"/*.enc 2>/dev/null | wc -l) -gt 0 ]; then
-            cat > "$BACKUP_DIR/backup_manifest.json" << EOF
-            {
-              "backup_date": "$(date -Iseconds)",
-              "backup_type": "encrypted_files_only",
-              "files_count": $(ls -1 "$BACKUP_DIR"/*.enc 2>/dev/null | wc -l),
-              "total_size_bytes": $(du -sb "$BACKUP_DIR" | cut -f1),
-              "railway_project": "${{ secrets.RAILWAY_PROJECT_ID }}",
-              "github_run_id": "${{ github.run_id }}",
-              "files": [
-                $(ls -1 "$BACKUP_DIR"/*.enc 2>/dev/null | sed 's/.*\//              "/' | sed 's/$/"/' | paste -sd, -)
-              ]
-            }
-            EOF
+            cat > "$BACKUP_DIR/backup_manifest.json" << 'EOF'
+          {
+            "backup_date": "$(date -Iseconds)",
+            "backup_type": "encrypted_files_only",
+            "files_count": $(ls -1 "$BACKUP_DIR"/*.enc 2>/dev/null | wc -l),
+            "total_size_bytes": $(du -sb "$BACKUP_DIR" | cut -f1),
+            "railway_project": "${{ secrets.RAILWAY_PROJECT_ID }}",
+            "github_run_id": "${{ github.run_id }}",
+            "files": [
+              $(ls -1 "$BACKUP_DIR"/*.enc 2>/dev/null | sed 's/.*\//              "/' | sed 's/$/"/' | paste -sd, -)
+            ]
+          }
+          EOF
           fi
       
       - name: Verify backup integrity
