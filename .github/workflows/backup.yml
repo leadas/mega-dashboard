@@ -19,13 +19,11 @@ jobs:
       - name: Setup Railway CLI
         run: npm install -g @railway/cli
       
-      - name: Authenticate with Railway
-        run: |
-          # Set Railway token as environment variable
-          export RAILWAY_TOKEN="${{ secrets.RAILWAY_TOKEN }}"
-          
-          # Verify authentication
-          railway whoami
+      - name: Set Railway Token
+        run: echo "RAILWAY_TOKEN=${{ secrets.RAILWAY_TOKEN }}" >> $GITHUB_ENV
+      
+      - name: Verify Railway Authentication
+        run: railway whoami
       
       - name: Create backup directory
         run: |
@@ -35,8 +33,6 @@ jobs:
       
       - name: Download encrypted data files
         run: |
-          export RAILWAY_TOKEN="${{ secrets.RAILWAY_TOKEN }}"
-          
           # Download only encrypted files (*.enc) from secure_data directory
           echo "Downloading encrypted data files..."
           
