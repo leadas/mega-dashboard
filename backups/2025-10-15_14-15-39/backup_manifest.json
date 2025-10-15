@@ -1,0 +1,10 @@
+{
+  "backup_date": "2025-10-15T14:15:40+00:00",
+  "backup_type": "backup_api_failed",
+  "files_count": 0,
+  "railway_project": "607458ef-8d45-414a-be1d-116bcdffeea5",
+  "github_run_id": "18531940958",
+  "railway_url": "https://web-production-d493.up.railway.app",
+  "message": "Backup info API endpoint failed - server may have issues",
+  "backup_method": "server_api_verification"
+}
