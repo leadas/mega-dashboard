@@ -22,17 +22,10 @@ jobs:
       - name: Authenticate with Railway
         run: |
           # Set Railway token as environment variable
-          echo "RAILWAY_TOKEN=${{ secrets.RAILWAY_TOKEN }}" >> $GITHUB_ENV
+          export RAILWAY_TOKEN="${{ secrets.RAILWAY_TOKEN }}"
           
-          # Create Railway config directory
-          mkdir -p ~/.railway
-          
-          # Create config file with token
-          cat > ~/.railway/config.json << EOF
-          {
-            "token": "${{ secrets.RAILWAY_TOKEN }}"
-          }
-          EOF
+          # Verify authentication
+          railway whoami
       
       - name: Create backup directory
         run: |
@@ -42,6 +35,8 @@ jobs:
       
       - name: Download encrypted data files
         run: |
+          export RAILWAY_TOKEN="${{ secrets.RAILWAY_TOKEN }}"
+          
           # Download only encrypted files (*.enc) from secure_data directory
           echo "Downloading encrypted data files..."
           
